@@ -80,7 +80,7 @@ module_grub() {
     current=$(grep GRUB_CMDLINE_LINUX_DEFAULT /etc/default/grub)
     info "Aktualnie: $current"
 
-    local params="quiet splash nvme_core.default_ps_max_latency_us=0 nvme.noacpi=1 pci=noaer i915.enable_dc=0 mem_sleep_default=s2idle"
+    local params="quiet splash nvme_core.default_ps_max_latency_us=0 nvme.noacpi=1 pci=noaer i915.enable_dc=0 mem_sleep_default=s2idle thunderbolt.security=none"
 
     cp /etc/default/grub /etc/default/grub.bak
     info "Backup zapisany: /etc/default/grub.bak"
@@ -424,6 +424,30 @@ module_keyboard() {
     fi
 }
 
+module_dracut() {
+    header "Dracut — initramfs module forcing"
+
+    local conf="/etc/dracut.conf.d/macbook.conf"
+
+    if [[ -f "$conf" ]] && grep -q "applespi" "$conf"; then
+        ok "macbook.conf already present"
+        result_ok "Dracut — already configured"
+        return
+    fi
+
+    info "Writing $conf..."
+    echo 'force_drivers+=" applespi intel_lpss_pci spi_pxa2xx_platform "' > "$conf"
+
+    info "Rebuilding initramfs (this may take a minute)..."
+    if dracut --force >> "$LOGFILE" 2>&1; then
+        ok "initramfs rebuilt"
+        result_ok "Dracut — reboot required"
+    else
+        fail "dracut --force failed"
+        result_fail "Dracut"
+    fi
+}
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 print_summary() {
     header "Podsumowanie"
@@ -464,15 +488,18 @@ main() {
     echo ""
     echo -e "${BOLD}Wybierz moduły do zainstalowania:${NC}"
 
-    ask "Kernel parameters (GRUB) — s2idle, nvme, pci, i915?" && module_grub    || result_skip "Kernel params"
-    ask "Suspend stack (platform-init + sleep hook + lid switch)?"  && module_suspend || result_skip "Suspend stack"
-    ask "Wi-Fi — brcmfmac DKMS?"                                   && module_wifi    || result_skip "Wi-Fi"
-    ask "Audio — Cirrus CS8409 DKMS?"                              && module_audio   || result_skip "Audio"
-    ask "Kamera — facetimehd DKMS?"                                && module_camera  || result_skip "Kamera"
-    ask "Klawiatura — model apple?"                                && module_keyboard || result_skip "Klawiatura"
+    ask "Kernel parameters (GRUB) — s2idle, nvme, pci, thunderbolt?" && module_grub     || result_skip "Kernel params"
+    ask "Suspend stack (platform-init + sleep hook + lid switch)?" && module_suspend  || result_skip "Suspend stack"
+    ask "Wi-Fi — brcmfmac?" && module_wifi     || result_skip "Wi-Fi"
+    ask "Audio — Cirrus CS8409 DKMS?" && module_audio    || result_skip "Audio"
+    ask "Camera — facetimehd DKMS?" && module_camera   || result_skip "Camera"
+    ask "Keyboard — apple model?" && module_keyboard || result_skip "Keyboard"
+    ask "Dracut — force essential modules into initramfs?" && module_dracut   || result_skip "Dracut"
 
     print_summary
     log "=== Instalacja zakończona ==="
 }
 
 main "$@"
+
+# (appended)

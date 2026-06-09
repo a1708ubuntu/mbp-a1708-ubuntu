@@ -1,99 +1,117 @@
 # MacBook Pro A1708 — Ubuntu Installer
 
-Modularny skrypt instalacyjny dla Ubuntu na MacBook Pro 13" 2017 (A1708 / MacBookPro14,1).
+A modular setup script for Ubuntu on the MacBook Pro 13" 2017 (A1708 / MacBookPro14,1).
 
-Przetestowany na **Ubuntu 26.04 / kernel 7.0**.
+Tested on **Ubuntu 26.04 / kernel 7.0**.
 
 ---
 
-## Obsługiwany sprzęt
+## Hardware Support
 
-| Komponent | Model | Status |
+| Component | Model | Status |
 |-----------|-------|--------|
-| CPU/GPU | Intel Kaby Lake + Intel Iris Plus 640 | ✅ mainline |
-| Wi-Fi | Broadcom BCM4350 (brcmfmac) | ✅ mainline kernel 7.0+ |
-| Audio | Cirrus Logic CS8409 | ✅ DKMS ([davidjo/snd_hda_macbookpro](https://github.com/davidjo/snd_hda_macbookpro)) |
-| Kamera | FaceTime HD | ✅ DKMS ([patjak/facetimehd](https://github.com/patjak/facetimehd)) |
-| Klawiatura / Touchpad | Apple SPI | ✅ mainline (applespi) |
-| Suspend (s2idle) | — | ✅ wymaga konfiguracji |
-| Thunderbolt / USB-C data | — | ⚠️ wymaga huba USB-C |
+| CPU/GPU | Intel Kaby Lake + Intel Iris Plus 640 | works out of the box |
+| Wi-Fi | Broadcom BCM4350 (brcmfmac) | works out of the box (kernel 7.0+) |
+| Audio | Cirrus Logic CS8409 | DKMS (davidjo/snd_hda_macbookpro) |
+| Camera | FaceTime HD | DKMS (patjak/facetimehd) |
+| Keyboard / Touchpad | Apple SPI | works out of the box (applespi) |
+| Suspend (s2idle) | | requires configuration |
+| Thunderbolt / USB-C data | Intel Alpine Ridge | works with thunderbolt.security=none |
 
 ---
 
-## Szybki start
+## Quick Start
 
-```bash
-git clone https://github.com/your-username/mbp-a1708-ubuntu
-cd mbp-a1708-ubuntu
-sudo bash install-mbp-a1708.sh
-```
+    git clone https://github.com/a1708ubuntu/mbp-a1708-ubuntu
+    cd mbp-a1708-ubuntu
+    sudo bash install-mbp-a1708.sh
 
-Skrypt wykrywa model (`MacBookPro14,1`) i pyta o każdy moduł osobno — instalujesz tylko to czego potrzebujesz.
+The script detects the model (MacBookPro14,1) and asks about each module individually.
 
 ---
 
-## Moduły
+## Modules
 
 ### Kernel parameters
-Ustawia w GRUB parametry niezbędne do stabilnego działania:
 
-```
-nvme_core.default_ps_max_latency_us=0  # stabilność NVMe
-nvme.noacpi=1                           # blokuje ACPI power management dla NVMe
-pci=noaer                               # wycisza błędy PCIe AER
-i915.enable_dc=0                        # wyłącza Display C-states (stabilność GPU)
-mem_sleep_default=s2idle                # wymusza s2idle zamiast deep sleep
-```
+Sets GRUB parameters required for stable operation:
 
-Backup oryginalnego `/etc/default/grub` jest tworzony automatycznie.
+    nvme_core.default_ps_max_latency_us=0  # NVMe stability
+    nvme.noacpi=1                           # disable ACPI power management for NVMe
+    pci=noaer                               # suppress PCIe AER errors
+    i915.enable_dc=0                        # disable Display C-states
+    mem_sleep_default=s2idle                # force s2idle instead of deep sleep
+    thunderbolt.security=none               # enable direct USB-C device enumeration
+
+A backup of the original /etc/default/grub is created automatically.
+
+NOTE: Remove any resume= and resume_offset= parameters from GRUB before running
+the installer — hibernate is not supported.
 
 ### Suspend stack
-Trzy komponenty razem zapewniają stabilny suspend/resume:
 
-- **`macbook-a1708-platform-init.sh`** — blokuje d3cold i przypina power/control na urządzeniach PCIe przy starcie systemu
-- **`macbook-a1708-sleep.sh`** — unloaduje `brcmfmac` przed suspendem i reloaduje po resumie; logi w `/var/log/macbook-suspend.log`
-- **logind** — `HandleLidSwitch=suspend` i `HandleLidSwitchExternalPower=suspend`
+Three components together provide stable suspend/resume:
 
-> ⚠️ Przed instalacją suspend stacku usuń parametry `resume=` i `resume_offset=` z GRUB jeśli je masz — hibernate nie jest obsługiwany.
+- macbook-a1708-platform-init.sh — disables d3cold and pins power/control on PCIe
+  devices at boot; runs as a systemd oneshot service
+- macbook-a1708-sleep.sh — unloads brcmfmac before suspend and reloads after
+  resume; logs to /var/log/macbook-suspend.log
+- logind — HandleLidSwitch=suspend and HandleLidSwitchExternalPower=suspend
 
 ### Wi-Fi
-Na kernelu 7.0+ `brcmfmac` i firmware BCM4350 są dostępne w mainline — skrypt tylko weryfikuje poprawność instalacji. Nie wymaga DKMS.
+
+On kernel 7.0+, brcmfmac and BCM4350 firmware are available in mainline.
+No DKMS required. The script verifies correct installation and removes
+broadcom-sta (bcmwl) if present, as it conflicts with brcmfmac.
 
 ### Audio
-Driver Cirrus CS8409 instalowany przez DKMS z repozytorium [davidjo/snd_hda_macbookpro](https://github.com/davidjo/snd_hda_macbookpro). Skrypt automatycznie aplikuje patche dla kernela 6.17+.
 
-### Kamera
-Driver FaceTime HD instalowany przez DKMS z repozytorium [patjak/facetimehd](https://github.com/patjak/facetimehd) wraz z firmware z [patjak/facetimehd-firmware](https://github.com/patjak/facetimehd-firmware).
+Cirrus CS8409 driver installed via DKMS from davidjo/snd_hda_macbookpro.
+Patches for kernel 6.17+ are applied automatically.
 
-### Klawiatura
-Ustawia `XKBMODEL=apple` w `/etc/default/keyboard` — poprawia działanie klawiszy funkcyjnych i układu.
+### Camera
 
----
+FaceTime HD driver installed via DKMS from patjak/facetimehd with firmware
+from patjak/facetimehd-firmware.
 
-## Znane ograniczenia
+### Keyboard
 
-- **Thunderbolt / USB-C data**: porty nie enumerują urządzeń USB bezpośrednio pod Linuxem (`security=user`, `boltctl` pusty). Do zewnętrznych dysków wymagany jest zasilany hub USB-C.
-- **Lid-open wake**: otwieranie klapki nie budzi systemu — wymagane naciśnięcie przycisku zasilania lub touchpada (ograniczenie hardware A1708 pod Linuxem).
-- **acpi_osi=Darwin**: nie używać — powoduje utratę klawiatury i touchpada przy starcie.
+Sets XKBMODEL=apple in /etc/default/keyboard — fixes function keys and layout.
 
----
+### Dracut
 
-## Logi
-
-- Instalacja: `/var/log/mbp-a1708-install.log`
-- Suspend/resume: `/var/log/macbook-suspend.log`
+Forces applespi, intel_lpss_pci, and spi_pxa2xx_platform into the initramfs
+via /etc/dracut.conf.d/macbook.conf. Prevents unbootable system after kernel
+updates on Ubuntu 26.04 (dracut-based).
 
 ---
 
-## Źródła i podziękowania
+## Known Limitations
 
-- [buxjr311/macbookpro-a1708-ubuntu-power-guide](https://github.com/buxjr311/macbookpro-a1708-ubuntu-power-guide) — suspend stack
-- [davidjo/snd_hda_macbookpro](https://github.com/davidjo/snd_hda_macbookpro) — audio DKMS
-- [patjak/facetimehd](https://github.com/patjak/facetimehd) — kamera DKMS
-- [t2linux.org](https://t2linux.org) — community knowledge base
+- Lid-open wake: opening the lid does not wake the system — use the power
+  button or touchpad (hardware limitation on A1708 under Linux).
+- acpi_osi=Darwin: do not use — causes keyboard and touchpad loss at boot.
+- thunderbolt.security=none disables Thunderbolt device authorization entirely.
+  This is acceptable for a personal machine but be aware of the security implications.
 
 ---
 
-## Licencja
+## Logs
+
+- Installation: /var/log/mbp-a1708-install.log
+- Suspend/resume: /var/log/macbook-suspend.log
+
+---
+
+## Credits
+
+- buxjr311/macbookpro-a1708-ubuntu-power-guide — suspend stack
+- davidjo/snd_hda_macbookpro — audio DKMS
+- patjak/facetimehd — camera DKMS
+- t2linux.org — community knowledge base
+
+---
+
+## License
 
 MIT
